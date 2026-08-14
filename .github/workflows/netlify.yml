@@ -7,7 +7,7 @@
 #
 # Secrets necessários (Settings → Secrets and variables → Actions):
 #   NETLIFY_AUTH_TOKEN  obrigatório  Personal access token do Netlify
-#   NETLIFY_SITE_ID     obrigatório  ID do site (Site configuration → Site information)
+#   NETLIFY_SITE_ID     opcional     Sobrepõe o site padrão fixado no job
 #   GEMINI_API_KEY      opcional     Só para o comando sync-env
 
 name: Netlify
@@ -43,19 +43,22 @@ jobs:
     env:
       COMMAND: ${{ inputs.command }}
       NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      # O Site ID identifica o site, mas não autoriza nada — sozinho não serve
+      # para ninguém, e a API do Netlify o expõe em URLs. Fica aqui em claro
+      # para o repositório precisar de um único secret. O secret, se existir,
+      # tem precedência: é o caminho para apontar o workflow para outro site
+      # sem reescrever o arquivo.
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID || '6d1bc2b5-3922-4e5a-8933-938de4d7b58f' }}
 
     steps:
-      - name: Conferir os secrets
+      - name: Conferir o token
         run: |
-          faltando=""
-          [ -n "$NETLIFY_AUTH_TOKEN" ] || faltando="$faltando NETLIFY_AUTH_TOKEN"
-          [ -n "$NETLIFY_SITE_ID" ] || faltando="$faltando NETLIFY_SITE_ID"
-          if [ -n "$faltando" ]; then
-            echo "::error::Secrets ausentes:$faltando — cadastre em Settings → Secrets and variables → Actions."
+          if [ -z "$NETLIFY_AUTH_TOKEN" ]; then
+            echo "::error::Secret NETLIFY_AUTH_TOKEN ausente — cadastre em Settings → Secrets and variables → Actions."
             exit 1
           fi
           echo "Comando: $COMMAND"
+          echo "Site:    $NETLIFY_SITE_ID"
 
       - uses: actions/checkout@v4
 

@@ -1,0 +1,126 @@
+# Deploy do Harmonize Clinical no Netlify.
+#
+# Este ambiente de desenvolvimento não alcança a rede do Netlify (a política de
+# egresso recusa netlify.com), então o deploy roda aqui, no runner do GitHub,
+# que tem rede liberada. O agente dispara este workflow e lê os logs pela API
+# do Actions — o token do Netlify fica só nos secrets do repositório.
+#
+# Secrets necessários (Settings → Secrets and variables → Actions):
+#   NETLIFY_AUTH_TOKEN  obrigatório  Personal access token do Netlify
+#   NETLIFY_SITE_ID     obrigatório  ID do site (Site configuration → Site information)
+#   GEMINI_API_KEY      opcional     Só para o comando sync-env
+
+name: Netlify
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "O que fazer"
+        type: choice
+        default: deploy-prod
+        options:
+          - deploy-prod
+          - deploy-preview
+          - status
+          - sync-env
+
+# Deploys não podem correr em paralelo: dois builds publicando ao mesmo tempo
+# deixam o site num estado imprevisível. Não cancelamos o que já está rodando —
+# um deploy interrompido no meio é pior que um deploy a mais.
+concurrency:
+  group: netlify-deploy
+  cancel-in-progress: false
+
+jobs:
+  netlify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      COMMAND: ${{ github.event_name == 'push' && 'deploy-prod' || inputs.command }}
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+
+    steps:
+      - name: Conferir os secrets
+        run: |
+          faltando=""
+          [ -n "$NETLIFY_AUTH_TOKEN" ] || faltando="$faltando NETLIFY_AUTH_TOKEN"
+          [ -n "$NETLIFY_SITE_ID" ] || faltando="$faltando NETLIFY_SITE_ID"
+          if [ -n "$faltando" ]; then
+            echo "::error::Secrets ausentes:$faltando — cadastre em Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          echo "Comando: $COMMAND"
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # O projeto versiona bun.lock, não package-lock.json (o .gitignore
+      # descarta o segundo de propósito), então `npm ci` não se aplica.
+      - name: Instalar dependências
+        if: env.COMMAND != 'status' && env.COMMAND != 'sync-env'
+        run: npm install --no-audit --no-fund
+
+      - name: Instalar o Netlify CLI
+        run: npm install -g netlify-cli
+
+      - name: Verificar tipos
+        if: startsWith(env.COMMAND, 'deploy')
+        run: npm run lint
+
+      # --build faz o CLI ler o netlify.toml e rodar o mesmo comando de build da
+      # produção, publicando dist/ junto com as functions de netlify/functions.
+      - name: Deploy de produção
+        if: env.COMMAND == 'deploy-prod'
+        run: netlify deploy --build --prod --site "$NETLIFY_SITE_ID"
+
+      - name: Deploy de preview
+        if: env.COMMAND == 'deploy-preview'
+        run: netlify deploy --build --site "$NETLIFY_SITE_ID"
+
+      - name: Status do site
+        if: env.COMMAND == 'status'
+        run: |
+          netlify status --site "$NETLIFY_SITE_ID"
+          echo "--- variáveis de ambiente configuradas ---"
+          netlify env:list --site "$NETLIFY_SITE_ID"
+
+      # Mantém a chave do Gemini nos secrets do GitHub como fonte única, em vez
+      # de duplicada no painel do Netlify.
+      - name: Sincronizar GEMINI_API_KEY para o Netlify
+        if: env.COMMAND == 'sync-env'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "::error::Secret GEMINI_API_KEY não cadastrado no repositório."
+            exit 1
+          fi
+          netlify env:set GEMINI_API_KEY "$GEMINI_API_KEY" --site "$NETLIFY_SITE_ID"
+          echo "Chave enviada. Rode deploy-prod para o site passar a usá-la."
+
+      - name: Conferir se o site respondeu
+        if: startsWith(env.COMMAND, 'deploy')
+        run: |
+          url=$(netlify api getSite --data "{\"site_id\":\"$NETLIFY_SITE_ID\"}" | jq -r '.ssl_url // .url')
+          echo "Site: $url"
+          echo "### Deploy concluído" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Site: $url" >> "$GITHUB_STEP_SUMMARY"
+
+          # O health check confirma que as functions subiram: se /api/health cair
+          # na regra de SPA, a resposta vem como HTML em vez do JSON.
+          resposta=$(curl -sS --retry 5 --retry-delay 3 --retry-all-errors "$url/api/health" || true)
+          echo "/api/health -> $resposta"
+          if echo "$resposta" | grep -q '"status":"ok"'; then
+            echo "- /api/health: ok" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- /api/health: **falhou** (functions podem não ter subido)" >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::/api/health não devolveu o JSON esperado."
+          fi

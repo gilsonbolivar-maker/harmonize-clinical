@@ -51,14 +51,46 @@ jobs:
       NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID || '6d1bc2b5-3922-4e5a-8933-938de4d7b58f' }}
 
     steps:
-      - name: Conferir o token
+      # Existir e valer são coisas diferentes: um token revogado, truncado na
+      # cópia ou de outra conta passa na checagem de presença e só falha lá na
+      # frente, com um 401 cru no meio de outro comando. Estas duas chamadas
+      # separam as três causas antes de qualquer trabalho.
+      - name: Conferir o token e o site
         run: |
           if [ -z "$NETLIFY_AUTH_TOKEN" ]; then
             echo "::error::Secret NETLIFY_AUTH_TOKEN ausente — cadastre em Settings → Secrets and variables → Actions."
             exit 1
           fi
+
+          codigo() {
+            curl -sS -o /tmp/resp.json -w '%{http_code}' --max-time 30 \
+              -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
+              "https://api.netlify.com/api/v1/$1"
+          }
+
+          http=$(codigo "user")
+          if [ "$http" = "401" ]; then
+            echo "::error::O Netlify recusou o token (401). Ele foi revogado, copiado incompleto ou é de outra conta. Gere um novo em app.netlify.com/user/applications e atualize o secret NETLIFY_AUTH_TOKEN."
+            exit 1
+          elif [ "$http" != "200" ]; then
+            echo "::error::A API do Netlify respondeu $http ao validar o token."
+            cat /tmp/resp.json || true
+            exit 1
+          fi
+          echo "Token válido — conta: $(jq -r '.email // .full_name // .id' /tmp/resp.json)"
+
+          http=$(codigo "sites/$NETLIFY_SITE_ID")
+          if [ "$http" = "404" ]; then
+            echo "::error::Site $NETLIFY_SITE_ID não encontrado (404). O ID está errado ou pertence a uma conta que este token não alcança."
+            exit 1
+          elif [ "$http" != "200" ]; then
+            echo "::error::A API do Netlify respondeu $http ao buscar o site."
+            cat /tmp/resp.json || true
+            exit 1
+          fi
+          echo "Site encontrado: $(jq -r '.name' /tmp/resp.json)"
+
           echo "Comando: $COMMAND"
-          echo "Site:    $NETLIFY_SITE_ID"
 
       - uses: actions/checkout@v4
 

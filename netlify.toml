@@ -1,0 +1,48 @@
+# Deploy do Harmonize Clinical no Netlify.
+#
+# O Netlify não roda o servidor Express de `server.ts`: publica o `dist/` como
+# site estático e expõe `netlify/functions/` sob demanda. Por isso o build aqui
+# é só `vite build` — as rotas /api/* são atendidas pelas functions, que usam
+# a mesma lógica de `lib/ai.ts` que o Express usa localmente.
+
+[build]
+  command = "npm run build:web"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# SPA: qualquer rota desconhecida devolve o index.html.
+# status 200 (rewrite, não redirect) para a URL original ser preservada.
+# As functions declaram seus próprios caminhos via `config.path` e têm
+# precedência sobre esta regra, então /api/* não cai aqui.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# O service worker controla a atualização de todo o resto: se ele mesmo ficar
+# presa em cache, o app trava numa versão antiga indefinidamente.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Service-Worker-Allowed = "/"
+
+# Bundles do Vite têm hash no nome — o conteúdo nunca muda.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Cache-Control = "no-cache"
+    Content-Type = "application/manifest+json; charset=utf-8"

@@ -1,0 +1,24 @@
+# Dependências
+node_modules/
+
+# Build
+dist/
+server.js
+
+# Variáveis de ambiente — GEMINI_API_KEY nunca vai para o repositório.
+# No Netlify, defina em Site configuration → Environment variables.
+.env
+.env.*
+!.env.example
+
+# O lockfile do projeto é o bun.lock. Um package-lock.json ao lado dele deixa
+# ambígua a detecção de gerenciador de pacotes no build do Netlify.
+package-lock.json
+
+# Netlify CLI
+.netlify/
+
+# Sistema operacional / editor
+.DS_Store
+Thumbs.db
+*.log

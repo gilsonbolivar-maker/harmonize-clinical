@@ -12,15 +12,16 @@
 
 name: Netlify
 
+# Sem gatilho em push: quem publica a cada commit é a integração nativa do
+# Netlify com o GitHub. Se este workflow também rodasse em push, cada commit
+# geraria dois builds concorrentes do mesmo site.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       command:
         description: "O que fazer"
         type: choice
-        default: deploy-prod
+        default: status
         options:
           - deploy-prod
           - deploy-preview
@@ -40,7 +41,7 @@ jobs:
     timeout-minutes: 15
 
     env:
-      COMMAND: ${{ github.event_name == 'push' && 'deploy-prod' || inputs.command }}
+      COMMAND: ${{ inputs.command }}
       NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
       NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
 
@@ -85,12 +86,25 @@ jobs:
         if: env.COMMAND == 'deploy-preview'
         run: netlify deploy --build --site "$NETLIFY_SITE_ID"
 
+      # Os deploys disparados pela integração nativa do Netlify não aparecem no
+      # Actions. Listá-los aqui é o que dá visibilidade sobre eles — inclusive
+      # a mensagem de erro de um build que falhou lá.
       - name: Status do site
         if: env.COMMAND == 'status'
         run: |
           netlify status --site "$NETLIFY_SITE_ID"
+
           echo "--- variáveis de ambiente configuradas ---"
           netlify env:list --site "$NETLIFY_SITE_ID"
+
+          echo "--- últimos deploys ---"
+          netlify api listSiteDeploys --data "{\"site_id\":\"$NETLIFY_SITE_ID\",\"per_page\":10}" \
+            | jq -r '.[] | "\(.created_at)  \(.state)  \(.branch // "-")  \(.error_message // "")"'
+
+          echo "--- o site está no ar? ---"
+          url=$(netlify api getSite --data "{\"site_id\":\"$NETLIFY_SITE_ID\"}" | jq -r '.ssl_url // .url')
+          echo "Site: $url"
+          echo "/api/health -> $(curl -sS --max-time 20 "$url/api/health" || echo 'sem resposta')"
 
       # Mantém a chave do Gemini nos secrets do GitHub como fonte única, em vez
       # de duplicada no painel do Netlify.

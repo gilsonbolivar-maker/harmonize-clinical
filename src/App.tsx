@@ -17,7 +17,6 @@ import { AiAssistantModule } from './components/AiAssistantModule';
 import { FaceMapStudio } from './components/FaceMapStudio';
 import { BackupModal } from './components/BackupModal';
 import { PwaBanners } from './components/PwaBanners';
-import SupervisoryDataCapture from './components/SupervisoryDataCapture';
 import { usePwa } from './hooks/usePwa';
 import type { BackupPayload } from './utils/backup';
 import { isSameMonth, todayISO } from './utils/date';
@@ -29,7 +28,7 @@ import {
   Sparkles, Users, Calendar as CalendarIcon, Package, FileText,
   DollarSign, SlidersHorizontal, Bell, Plus, Clock, CheckCircle2,
   AlertTriangle, ShieldCheck, ChevronRight, Menu, X, ArrowUpRight,
-  TrendingUp, Syringe, HeartPulse, DatabaseBackup, BarChart3
+  TrendingUp, Syringe, HeartPulse, DatabaseBackup
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -41,12 +40,11 @@ type NavModule =
   | 'inventory'
   | 'procedures'
   | 'financial'
-  | 'ai_assistant'
-  | 'supervisory';
+  | 'ai_assistant';
 
 const NAV_MODULES: NavModule[] = [
   'dashboard', 'patients', 'appointments', 'facemap',
-  'inventory', 'procedures', 'financial', 'ai_assistant', 'supervisory',
+  'inventory', 'procedures', 'financial', 'ai_assistant',
 ];
 
 /**
@@ -293,7 +291,6 @@ export default function App() {
     { id: 'inventory', label: 'Estoque Injetáveis', sublabel: 'Frascos & ANVISA', icon: Package, alertBadge: criticalStockItems.length > 0 },
     { id: 'procedures', label: 'Procedimentos', sublabel: 'Protocolos & Tabela', icon: FileText },
     { id: 'financial', label: 'Financeiro', sublabel: 'Fluxo & Comissões', icon: DollarSign },
-    { id: 'supervisory', label: 'Supervisório', sublabel: 'Captura de dados & OCR', icon: BarChart3 },
     { id: 'ai_assistant', label: 'IA Pós-Cuidado', sublabel: 'Auditoria & Recomendações', icon: Sparkles },
   ];
 
@@ -867,11 +864,6 @@ export default function App() {
             patients={patients}
             procedures={procedures}
           />
-        )}
-
-        {/* MODULE 9: SUPERVISORY DATA CAPTURE */}
-        {activeModule === 'supervisory' && (
-          <SupervisoryDataCapture />
         )}
         </main>
       </div>

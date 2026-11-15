@@ -81,6 +81,26 @@ módulos de IA devolvem conteúdo de exemplo.
 Depois do deploy, confira `https://SEU-SITE.netlify.app/api/health` — deve
 responder `{"status":"ok"}`. Se vier o HTML do app, as functions não subiram.
 
+## Deploy no GitHub Pages
+
+O front também publica como site estático. O workflow
+`.github/workflows/pages.yml` roda `npm run build:web` com
+`BASE_PATH=/harmonize-clinical/` e envia o `dist/` para o GitHub Pages.
+
+Endereço esperado:
+
+`https://gilsonbolivar-maker.github.io/harmonize-clinical/`
+
+Uma vez, em **Settings → Pages → Build and deployment**, a **Source** precisa
+estar em **GitHub Actions**. O workflow dispara no push da `main` (e também
+pode ser rodado à mão em Actions).
+
+O plano gratuito do GitHub só serve Pages de repositório **público**. Este
+repositório já está público. As telas clínicas funcionam no navegador (os
+dados ficam no `localStorage` de cada aparelho). As rotas `/api/*` não existem
+no Pages: a IA só responde no Netlify ou no `npm start` local. `GEMINI_API_KEY`
+continua opcional e não entra no build.
+
 ## Backup dos dados
 
 ⚠️ **Todos os dados da clínica ficam no `localStorage` do navegador.** Não há

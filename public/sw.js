@@ -13,18 +13,29 @@
  *  - /api/*: nunca cacheado — respostas de IA e health check precisam ser reais.
  */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL_CACHE = `harmonize-shell-${VERSION}`;
 const ASSET_CACHE = `harmonize-assets-${VERSION}`;
 const CURRENT_CACHES = [SHELL_CACHE, ASSET_CACHE];
 
+/**
+ * Prefixo do app. Na raiz (Netlify, `npm start`) o worker está em /sw.js e
+ * isto vale "/". No GitHub Pages ele está em /harmonize-clinical/sw.js.
+ */
+const BASE_PATH = new URL('./', self.location).pathname;
+
+function appUrl(path) {
+  const clean = String(path || '').replace(/^\//, '');
+  return clean ? `${BASE_PATH}${clean}` : BASE_PATH;
+}
+
 /** Recursos suficientes para a primeira pintura offline. */
 const SHELL_URLS = [
-  '/',
-  '/manifest.webmanifest',
-  '/icon-192.png',
-  '/icon-512.png',
-  '/apple-touch-icon.png',
+  BASE_PATH,
+  appUrl('manifest.webmanifest'),
+  appUrl('icon-192.png'),
+  appUrl('icon-512.png'),
+  appUrl('apple-touch-icon.png'),
 ];
 
 self.addEventListener('install', (event) => {
@@ -115,12 +126,12 @@ async function handleNavigation(event) {
     const preloaded = await event.preloadResponse;
     const response = preloaded || (await fetch(event.request));
     if (response && response.ok) {
-      // Guarda sempre em '/' para qualquer rota servir a mesma casca SPA.
-      cache.put('/', response.clone());
+      // Guarda sempre na raiz do app para qualquer rota servir a mesma casca SPA.
+      cache.put(BASE_PATH, response.clone());
     }
     return response;
   } catch {
-    const cached = (await cache.match(event.request)) || (await cache.match('/'));
+    const cached = (await cache.match(event.request)) || (await cache.match(BASE_PATH));
     return cached || offlineFallbackResponse();
   }
 }
@@ -166,7 +177,7 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   // Nunca cachear a API: respostas de IA e health check precisam ser frescas.
-  if (url.pathname.startsWith('/api/')) return;
+  if (url.pathname.startsWith(appUrl('api/'))) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(handleNavigation(event));
@@ -174,7 +185,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Bundles do Vite têm hash no nome — o conteúdo nunca muda.
-  if (url.pathname.startsWith('/assets/')) {
+  if (url.pathname.startsWith(appUrl('assets/'))) {
     event.respondWith(
       cacheFirst(request, ASSET_CACHE).catch(() => Response.error()),
     );

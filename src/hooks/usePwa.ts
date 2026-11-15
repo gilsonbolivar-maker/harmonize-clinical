@@ -89,8 +89,9 @@ export function usePwa(): PwaState {
       });
     };
 
+    const baseUrl = import.meta.env.BASE_URL;
     navigator.serviceWorker
-      .register('/sw.js', { scope: '/' })
+      .register(`${baseUrl}sw.js`, { scope: baseUrl })
       .then((registration) => {
         if (cancelled) return;
 
